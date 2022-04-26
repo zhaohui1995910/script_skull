@@ -19,7 +19,6 @@ from marshmallow import Schema
 from models import bind
 from models.scrapy import Server, Project, ProjectVersion, Job, Spider, Task, TaskTimer, TaskSetting
 from utils.sanic_parser import parse_args as params_parse
-from utils.aiohttp import aiohttp_session
 from utils.response import Response
 
 app = Sanic.get_app('SanicSpider')
@@ -97,7 +96,10 @@ class ProjectView(HTTPMethodView):
         'desc'           : fields.Str(),
         'create_datetime': fields.DateTime(),
         'update_datetime': fields.DateTime(),
-        'versions'       : fields.List(fields.Str(), required=False, attribute='versions'),
+        'versions'       : fields.List(fields.Nested(Schema.from_dict({
+            'code'           : fields.Str(attribute='code'),
+            'create_datetime': fields.DateTime()
+        })), attribute='version'),
         'server_id'      : fields.Str(default=None, attribute='server.id'),
     }
 
@@ -107,7 +109,6 @@ class ProjectView(HTTPMethodView):
         project: str = kwargs.get('project')
         session = request.ctx.session
 
-        item_data = []
         async with session.begin():
             # 查询项目总数
             count_stmt = select(func.count()).select_from(Project)
@@ -126,13 +127,8 @@ class ProjectView(HTTPMethodView):
             result = await session.execute(stmt)
             project_list = result.scalars().all()
 
-            for p in project_list:
-                item = p.to_dict()
-                item['versions'] = [v.code for v in p.version]
-                item_data.append(item)
-
         result_schema = Schema.from_dict(self.result_fields)(many=True)
-        data = result_schema.dump(item_data)
+        data = result_schema.dump(project_list)
         result_data = {'total': project_count, 'projects': data}
 
         return Response.success(data=result_data)
@@ -166,7 +162,6 @@ class SpiderView(HTTPMethodView):
         'spider' : fields.Str(required=False, default=None),
         'project': fields.Integer(required=False, default=None),
         'version': fields.Str(required=False, default=None),
-        'desc'   : fields.Str(required=False, default=None, validate=lambda x: len(x) < 255),
     }
     put_fields = {
         'id'  : fields.Integer(required=True),
@@ -216,30 +211,28 @@ class SpiderView(HTTPMethodView):
 
         result_schema = Schema.from_dict(self.result_fields)(many=True)
         data = result_schema.dump(item_list)
-        result_data = {'total': spider_count, 'data': data}
+        result_data = {'total': spider_count, 'spiders': data}
 
         return Response.success(data=result_data)
 
-    @aiohttp_session()
     @params_parse(post_fields, location="json")
     async def post(self, request, kwargs):
         """启动爬虫"""
         session = request.ctx.session
-        select_stmt = select(Spider).options(
-            selectinload(Project).options(selectinload(Server))
-        ).where(
-            Spider.id == kwargs['id'],
-            Spider.version_code == kwargs['version']
-        )
-
         async with session.begin():
+            select_stmt = select(Spider).options(
+                selectinload(Spider.project).options(
+                    selectinload(Project.server)
+                )
+            ).where(
+                Spider.id == kwargs['id'],
+                Spider.version_code == kwargs['version']
+            )
             result = await session.execute(select_stmt)
             item = result.scalar()
-
             if not item:
                 log.logger.error('未查询到爬虫，sql： %s' % select_stmt)
-                return Response.fail(data='启动失败')
-
+                return Response.fail(data='启动失败', code=200)
         url = 'http://{}:{}/schedule.json'.format(
             item.project.server.host,
             item.project.server.port
@@ -250,7 +243,8 @@ class SpiderView(HTTPMethodView):
             '_version': item.version_code,
             'setting' : kwargs['settings'],
         }
-        async with request.ctx.http_session.post(url, json=post_json) as response:
+        http_session = aiohttp.ClientSession()
+        async with http_session.post(url, json=post_json) as response:
             result_json = await response.json()
             if result_json.get('jobid'):
                 job_item = Job(
@@ -261,6 +255,7 @@ class SpiderView(HTTPMethodView):
                 )
                 async with session.begin():
                     session.add(job_item)
+        await http_session.close()
 
         return Response.success(data='启动成功')
 

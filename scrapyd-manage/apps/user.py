@@ -15,7 +15,7 @@ from models.user import AuthUser
 from utils.sanic_parser import parse_args as params_parse
 from utils.auth import gen_token, token_set, vaildate_login
 from utils.response import Response
-from utils.aiohttp import aiohttp_session
+from utils.aiohttp_client import aiohttp_session
 
 app = Sanic.get_app('SanicSpider')
 bp = Blueprint('user', url_prefix='/user')
