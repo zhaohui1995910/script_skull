@@ -1,11 +1,19 @@
 <template>
   <div class="app-container">
-    <el-table v-loading="listLoading" :data="tableData" :header-cell-style="{background:'#eef1f6',color:'#606266'}" :row-style="{height:'10px'}" :cell-style="{padding:'5px'}" style="width: 100%" stripe="true">
-      <el-table-column type="index" label="Node" width="100" align="center" />
+    <el-table
+      :loading="listLoading"
+      :data="tableData"
+      :header-cell-style="{background:'#eef1f6',color:'#606266'}"
+      :row-style="{height:'10px'}"
+      :cell-style="{padding:'5px'}"
+      style="width: 100%"
+      stripe="true"
+    >
+      <el-table-column type="index" label=" " width="50" align="center" />
+      <el-table-column prop="host" label="Host" min-width="150" />
+      <el-table-column prop="port" label="Port" min-width="150" />
+      <el-table-column prop="hostname" label="HostName" />
       <el-table-column prop="status" label="Status" min-width="80" />
-      <el-table-column prop="host" label="Scrapyd server" min-width="150" />
-      <el-table-column prop="port" label="Scrapyd port" min-width="150" />
-      <el-table-column prop="hostname" label="Hostname" />
       <el-table-column prop="pending" label="Pending" width="120">
         <template slot-scope="scope">
           <span style="color:#00CC00; font-weight:600">{{ scope.row.pending }}</span>
@@ -30,7 +38,7 @@
 
     <el-button type="primary" style="margin-left:10px;margin-top: 20px;" @click="handleAddServer">Add Server</el-button>
 
-    <el-dialog title="Add Scrapyd-Server" :visible.sync="addServerDialog" style="">
+    <el-dialog title="Add Scrapyd-Server" :visible.sync="addServerDialog" width="30%">
       <el-form label-position="left" label-width="120px" :model="serverForm">
         <el-form-item label="IP">
           <el-input v-model="serverForm.host" style="width:250px" />
@@ -48,7 +56,7 @@
           <el-input v-model="serverForm.password" style="width:250px" />
         </el-form-item>
       </el-form>
-      <el-button type="primary" style="margin-left:10px;margin-top: 20px;" @click="handleAdd">Add</el-button>
+      <el-button type="primary" style="margin-left:10px;margin-top: 20px;" @click="handleAdd">Submit</el-button>
     </el-dialog>
 
   </div>
