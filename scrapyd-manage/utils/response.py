@@ -18,11 +18,11 @@ class Response:
             'code': code,
             'data': data,
         }
-        return json(data, status=200)
+        return json(data, status=code)
 
     @staticmethod
     def fail(
-            code: int = 201,
+            code: int = 500,
             data: Union[str, list, dict] = None,
             error: Union[dict, str] = None
     ) -> HTTPResponse:
@@ -31,4 +31,4 @@ class Response:
             'data' : data,
             'error': error,
         }
-        return json(data, status=201)
+        return json(data, status=code)
