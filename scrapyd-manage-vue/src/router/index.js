@@ -124,21 +124,6 @@ export const asyncRoutes = [
     path: 'scrapy',
     children: [
       {
-        path: '/spider',
-        component: () => import('@/views/scrapyd/spider-table'),
-        meta: {
-          title: 'Spiders',
-          icon: 'bug',
-          noCache: true
-        }
-      }
-    ]
-  },
-  {
-    component: Layout,
-    path: 'scrapy',
-    children: [
-      {
         path: '/task',
         component: () => import('@/views/scrapyd/timer-tasks-table'),
         meta: {
@@ -178,13 +163,13 @@ export const asyncRoutes = [
         }
       }
     ]
-  },
+  }
 ]
 
 const createRouter = () => new Router({
   // mode: 'browserHistory', // require service support
   mode: 'history', // require service support
-  scrollBehavior: () => ({y: 0}),
+  scrollBehavior: () => ({ y: 0 }),
   routes: constantRoutes
 })
 const router = createRouter()
