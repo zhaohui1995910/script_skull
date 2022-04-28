@@ -1,18 +1,32 @@
 <template>
   <div class="app-container">
     <el-table
-      :loading="tableLoading"
+      v-loading="tableLoading"
       :data="projectList"
       :header-cell-style="{background:'#eef1f6',color:'#606266'}"
     >
-      <el-table-column type="index" width="50" label=" " />
+      <el-table-column width="80" type="expand" align="center">
+        <template slot-scope="scope">
+          <el-input
+            v-model="scope.row.desc"
+            type="textarea"
+            :rows="2"
+            style="width: 300px"
+            @change="handleEditProject(scope.$index, scope.row)"
+          />
+        </template>
+      </el-table-column>
       <el-table-column label="ProjectName" prop="name" />
       <el-table-column label="Desc" prop="desc" show-overflow-tooltip />
       <el-table-column label="LastVersion" prop="last_version" />
       <el-table-column label="CreateTime" header-align="center" prop="create_time" />
-      <el-table-column align="center" header-align="center" label="Opthons" width="300px">
+      <el-table-column align="center" header-align="center" width="300px">
+        <template slot="header">
+          <el-button size="mini" type="primary" @click="handleAddProject">Add</el-button>
+        </template>
         <template slot-scope="scope">
           <el-button size="mini" type="success" @click="handleVersion(scope.$index, scope.row)">Version</el-button>
+          <el-button size="mini" type="danger" @click="handleDelete(scope.$index, scope.row)">Delete</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -74,11 +88,50 @@
         </el-table-column>
       </el-table>
     </el-dialog>
+
+    <el-dialog class="add_projcet" title="Add Project" :visible.sync="addProjectDialog" width="40%">
+      <el-form ref="form" :model="addProjectForm" label-width="150px" label-position="left">
+        <el-form-item label="ProjectServer：">
+          <el-select v-model="addProjectForm.server_id" placeholder="请选择服务器">
+            <el-option
+              v-for="server in serverList"
+              :key="server.id"
+              :label="server.host"
+              :value="server.id"
+              style="width: 300px"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="ProjectName：">
+          <el-input v-model="addProjectForm.name" />
+        </el-form-item>
+        <el-form-item label="ProjectDesc：">
+          <el-input v-model="addProjectForm.desc" />
+        </el-form-item>
+        <el-form-item label="Project Egg：">
+          <el-upload
+            class="upload-egg"
+            ref="upload"
+            :auto-upload="false"
+            :data="addProjectForm"
+            :headers="token"
+            :action="updateEggUrl"
+            :limit="1"
+            :file-list="files"
+            :on-success="UpdateCallback"
+          >
+            <el-button slot="trigger" size="small" type="primary">Select File</el-button>
+            <el-button style="margin-left: 10px;" size="small" type="success" @click="submitUpload">Update</el-button>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { projectList, spiderList, runSpider } from '@/api/scrapyd'
+import { projectList, updateProject, deleteProject, spiderList, runSpider, serverList } from '@/api/scrapyd'
+import { getToken } from '@/utils/auth'
 
 export default {
   data() {
@@ -103,7 +156,15 @@ export default {
         }
       },
       currentSpiderList: [],
-      projectSpiderDialog: false
+      projectSpiderDialog: false,
+      addProjectDialog: false,
+      addProjectForm: {},
+      files: [],
+      updateEggUrl: process.env.VUE_APP_BASE_API + '/scrapy/project',
+      token: {
+        'authorization': 'Bearer ' + getToken()
+      },
+      serverList: []
     }
   },
   created() {
@@ -124,6 +185,26 @@ export default {
         this.projectVersionList.push(item)
       })
     },
+    handleAddProject() {
+      this.addProjectDialog = true
+      serverList().then(response => {
+        this.serverList = response.data
+      })
+    },
+    handleDelete(index, row) {
+      this.$confirm('此操作将永久删除该项目, 是否继续?', '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        deleteProject({ project_id: row.id }).then(response => {
+          if (response.code === 200) {
+            this.$message.success('删除成功')
+            this.getProjectList()
+          }
+        })
+      })
+    },
     handleSpider(index, row) {
       this.spiderDialog = true
       this.projectSpiderDialog = true
@@ -142,16 +223,30 @@ export default {
         }
       })
     },
+    handleEditProject(index, row) {
+      updateProject({ project_id: row.id, desc: row.desc })
+    },
     getProjectList() {
       this.tableLoading = true
       projectList({ page: 1 }).then(response => {
         this.projectList = response.data.projects
       })
       setTimeout(() => { this.tableLoading = false }, 600)
+    },
+    submitUpload() {
+      this.$refs.upload.submit()
+      this.addProjectDialog = false
+    },
+    UpdateCallback(response, file, fileList) {
+      this.addProjectDialog = false
+      this.getProjectList()
     }
   }
 }
 </script>
 
 <style>
+.el-input {
+  width: 300px;
+}
 </style>

@@ -5,13 +5,17 @@
 # @Software: PyCharm
 import json
 import datetime
+import time
 
+import requests
 import aiohttp
+from aiohttp.payload import BytesIOPayload
+from aiohttp.formdata import FormData
 from webargs import fields
 from sanic import Blueprint, text, Request, Sanic, log
 from sanic.views import HTTPMethodView
 from sanic.exceptions import InvalidUsage
-from sqlalchemy import select, update, func, insert, exc
+from sqlalchemy import select, update, func, insert, delete, exc
 from sqlalchemy.orm import selectinload, Session, sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession
 from marshmallow import Schema
@@ -111,7 +115,7 @@ class ProjectView(HTTPMethodView):
 
         async with session.begin():
             # 查询项目总数
-            count_stmt = select(func.count()).select_from(Project)
+            count_stmt = select(func.count()).select_from(Project).where(Project.is_delete == 0)
             count_result = await session.execute(count_stmt)
             project_count = count_result.scalar()
 
@@ -119,6 +123,7 @@ class ProjectView(HTTPMethodView):
                 stmt = select(Project).where(Project.name.like("%{}%".format(project)))
             else:
                 stmt = select(Project)
+            stmt = stmt.where(Project.is_delete == 0)
             # 加载子表
             stmt = stmt.options(selectinload(Project.server), selectinload(Project.version))
             # 分页查询
@@ -133,10 +138,69 @@ class ProjectView(HTTPMethodView):
 
         return Response.success(data=result_data)
 
-    async def post(self, request, kwargs):
-        # todo 发布项目或发布新版本, scrapyd服务器信息（地址，端口），egg文件，项目信息（名称、版本）
-        # todo 发布成功后，获取项目信息，及爬虫列表
-        pass
+    async def post(self, request):
+        # 发布项目或发布新版本, scrapyd服务器信息（地址，端口），egg文件，项目信息（名称、版本）
+        # 发布成功后，获取项目信息，及爬虫列表
+        project_name = request.form.get('name')
+        project_desc = request.form.get('desc')
+        server_id = request.form.get('server_id')
+
+        version = int(time.time() * 1000)
+
+        db_session = request.ctx.session
+        select_stmt = select(Server).where(Server.id == int(server_id))
+        result = await db_session.execute(select_stmt)
+        server_item = result.scalars().first()
+
+        file = request.files.get('file') if request.files.get('file') else b''
+        host = server_item.host
+        port = server_item.port
+
+        # 发布项目 -> scrapyd
+        data = {
+            'project': project_name,
+            'version': version,
+            'egg'    : file.body,
+        }
+        add_project_url = f'http://{host}:{port}/addversion.json'
+        response = requests.post(url=add_project_url, data=data)
+        result = response.json()
+        if result.get('status') == 'ok':
+            insert_stmt = insert(Project).values(
+                name=project_name,
+                desc=project_desc,
+                server_id=server_id,
+                is_delete=False
+            )
+
+            insert_result = await db_session.execute(insert_stmt)
+            project_id = insert_result.inserted_primary_key[0]
+
+            version_insert_stmt = insert(ProjectVersion).values(
+                code=version,
+                project_id=project_id
+            )
+            await db_session.execute(version_insert_stmt)
+            await db_session.commit()
+        else:
+            return Response.fail(data="发布失败")
+
+        # 获取爬虫
+        get_spider_url = f'http://{host}:{port}/listspiders.json'
+        response = requests.get(get_spider_url, params={'project': project_name, '_version': version})
+        result = response.json()
+        for spider_name in result.get('spiders'):
+            insert_spider_stmt = insert(Spider).values(
+                name=spider_name,
+                desc='',
+                project_id=project_id,
+                version_code=version,
+                create_datetime=datetime.datetime.now()
+            )
+            await db_session.execute(insert_spider_stmt)
+        await db_session.commit()
+
+        return Response.success(data='发布成功')
 
     @params_parse(_fields, location="json")
     async def put(self, request, kwargs):
@@ -153,6 +217,17 @@ class ProjectView(HTTPMethodView):
             await session.execute(update_stmt)
 
         return Response.success(data='更新成功')
+
+    @params_parse(_fields, location="json")
+    async def delete(self, request, kwargs):
+        project_id = kwargs.get('project_id')
+
+        session = request.ctx.session
+        async with session.begin():
+            delete_stmt = update(Project).where(Project.id == project_id).values(is_delete=True)
+            await session.execute(delete_stmt)
+
+        return Response.success(data='删除成功')
 
 
 class SpiderView(HTTPMethodView):
@@ -452,14 +527,14 @@ async def schedule_task_spider(task_id: int):
         selectinload(Task.task_timer), selectinload(Task.task_setting)
     )
     task_result = await session.execute(select_task_stmt)
-    task = task_result.first()
+    task = task_result.scalars().first()
     # 根据爬虫对象查询项目对象
     spider_id = task.spider_id
     select_spider_stmt = select(Spider).where(Spider.id == spider_id).options(
         selectinload(Spider.project).options(Project.server)
     )
     spider_result = await session.execute(select_spider_stmt)
-    spider = spider_result.first()
+    spider = spider_result.scalars().first()
 
     # 启动爬虫
     host = spider.project.server.host

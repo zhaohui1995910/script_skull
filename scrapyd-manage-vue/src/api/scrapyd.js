@@ -57,8 +57,16 @@ export function activateProjectSpider(data) {
 
 export function updateProject(data) {
   return request({
-    url: '/scrapyd/projects',
-    method: 'post',
+    url: '/scrapy/project',
+    method: 'put',
+    data
+  })
+}
+
+export function deleteProject(data) {
+  return request({
+    url: '/scrapy/project',
+    method: 'delete',
     data
   })
 }
@@ -73,7 +81,7 @@ export function updateSpider(data) {
 
 export function spiderList(query) {
   return request({
-    url: '/scrapyd/spiders/info',
+    url: '/scrapy/spider',
     method: 'get',
     params: query
   })
@@ -161,7 +169,7 @@ export function LogInfo(query) {
 
 export function runSpider(data) {
   return request({
-    url: '/scrapyd/spider/run',
+    url: '/scrapy/spider',
     method: 'post',
     data
   })

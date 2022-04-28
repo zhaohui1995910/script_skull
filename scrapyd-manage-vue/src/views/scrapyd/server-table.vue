@@ -1,7 +1,7 @@
 <template>
   <div class="app-container">
     <el-table
-      :loading="listLoading"
+      v-loading="listLoading"
       :data="tableData"
       :header-cell-style="{background:'#eef1f6',color:'#606266'}"
       :row-style="{height:'10px'}"
@@ -29,14 +29,15 @@
           <span style="color:#00CC00; font-weight:600">{{ scope.row.finished }}</span>
         </template>
       </el-table-column>
-      <el-table-column align="Opthons" fixed="right" width="150" label="Opthons">
+      <el-table-column align="center" fixed="right" header-align="center" width="150">
+        <template slot="header">
+          <el-button type="primary" size="mini" @click="handleAddServer">Add</el-button>
+        </template>
         <template slot-scope="scope">
           <el-button size="mini" type="danger" @click="handleDelete(scope.$index, scope.row)">Delete</el-button>
         </template>
       </el-table-column>
     </el-table>
-
-    <el-button type="primary" style="margin-left:10px;margin-top: 20px;" @click="handleAddServer">Add Server</el-button>
 
     <el-dialog title="Add Scrapyd-Server" :visible.sync="addServerDialog" width="30%">
       <el-form label-position="left" label-width="120px" :model="serverForm">
@@ -90,7 +91,7 @@ export default {
       this.listLoading = true
       serverList().then(response => {
         this.tableData = response.data
-        setTimeout(() => { this.listLoading = false }, 1.5 * 1)
+        setTimeout(() => { this.listLoading = false }, 600)
       })
     },
     handleAddServer() {

@@ -67,6 +67,7 @@ class Project(BaseModel):
 
     server = relationship('Server', back_populates='project', uselist=False)
     jobs = relationship('Job', back_populates='project')
+    is_delete = Column(BOOLEAN, nullable=False, default=False)
     version = relationship(
         'ProjectVersion',
         uselist=True,

@@ -6,6 +6,8 @@ WORKDIR /scrapyd
 
 ADD requirements.txt .
 
+ADD config.conf .
+
 RUN pip install -r requirements.txt
 
 EXPOSE 6800

@@ -6,7 +6,14 @@
       </el-select>
       <el-button type="primary" style="margin-left:10px" size="mini" @click="AddTask">Add Task</el-button>
     </div>
-    <el-table :data="taskInfoList.filter(data => !projectSelect || data.project === projectSelect)" :header-cell-style="{background:'#eef1f6',color:'#606266'}" :row-style="{height:'10px'}" :cell-style="{padding:'5px'}" style="width: 100%" stripe="true">
+    <el-table
+      :data="taskInfoList.filter(data => !projectSelect || data.project === projectSelect)"
+      :header-cell-style="{background:'#eef1f6',color:'#606266'}"
+      :row-style="{height:'10px'}"
+      :cell-style="{padding:'5px'}"
+      style="width: 100%"
+      stripe="true"
+    >
       <el-table-column width="50" type="expand" align="center">
         <template slot-scope="props">
           <el-form label-position="left" inline class="demo-table-expand">
