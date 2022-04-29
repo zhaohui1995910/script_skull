@@ -27,10 +27,10 @@ app.ctx.cache = cache
 auto_discover(
     app,
     'middleware',
-    'utils.exception',
     'routes',
     'apps.user',
     'apps.spider',
+    # 'utils.exception',
     recursive=False,
 )
 

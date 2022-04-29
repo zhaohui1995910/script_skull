@@ -141,6 +141,8 @@ class ProjectView(HTTPMethodView):
     async def post(self, request):
         # 发布项目或发布新版本, scrapyd服务器信息（地址，端口），egg文件，项目信息（名称、版本）
         # 发布成功后，获取项目信息，及爬虫列表
+        # 若新发布的项目名称数据库中已存在并is_delete为true，需要is_delete改为false
+        # todo 若scrapyd因意外等，导致项目历史的版本已不存在，但是数据库仍饭存在
         project_name = request.form.get('name')
         project_desc = request.form.get('desc')
         server_id = request.form.get('server_id')
@@ -156,6 +158,14 @@ class ProjectView(HTTPMethodView):
         host = server_item.host
         port = server_item.port
 
+        select_stmt = select(Project).where(Project.name == project_name)
+        result = await db_session.execute(select_stmt)
+        project = result.scalars().first()
+
+        if project:
+            project.is_delete = False
+            await db_session.commit()
+
         # 发布项目 -> scrapyd
         data = {
             'project': project_name,
@@ -165,30 +175,45 @@ class ProjectView(HTTPMethodView):
         add_project_url = f'http://{host}:{port}/addversion.json'
         response = requests.post(url=add_project_url, data=data)
         result = response.json()
+
         if result.get('status') == 'ok':
-            insert_stmt = insert(Project).values(
-                name=project_name,
-                desc=project_desc,
-                server_id=server_id,
-                is_delete=False
-            )
 
-            insert_result = await db_session.execute(insert_stmt)
-            project_id = insert_result.inserted_primary_key[0]
+            if not project:
 
-            version_insert_stmt = insert(ProjectVersion).values(
-                code=version,
-                project_id=project_id
-            )
-            await db_session.execute(version_insert_stmt)
-            await db_session.commit()
+                insert_stmt = insert(Project).values(
+                    name=project_name,
+                    desc=project_desc,
+                    server_id=server_id,
+                    is_delete=False
+                )
+                insert_result = await db_session.execute(insert_stmt)
+                project_id = insert_result.inserted_primary_key[0]
+
+                version_insert_stmt = insert(ProjectVersion).values(
+                    code=version,
+                    project_id=project_id,
+                    create_datetime=datetime.datetime.now()
+                )
+                await db_session.execute(version_insert_stmt)
+
+            else:
+                project_id = project.id
+                version_insert_stmt = insert(ProjectVersion).values(
+                    code=version,
+                    project_id=project.id,
+                    create_datetime=datetime.datetime.now()
+                )
+                await db_session.execute(version_insert_stmt)
+                await db_session.commit()
         else:
             return Response.fail(data="发布失败")
 
-        # 获取爬虫
+        # 获取爬虫列表
         get_spider_url = f'http://{host}:{port}/listspiders.json'
-        response = requests.get(get_spider_url, params={'project': project_name, '_version': version})
+        params = {'project': project_name, '_version': version}
+        response = requests.get(get_spider_url, params=params)
         result = response.json()
+
         for spider_name in result.get('spiders'):
             insert_spider_stmt = insert(Spider).values(
                 name=spider_name,
@@ -198,8 +223,8 @@ class ProjectView(HTTPMethodView):
                 create_datetime=datetime.datetime.now()
             )
             await db_session.execute(insert_spider_stmt)
-        await db_session.commit()
 
+        await db_session.commit()
         return Response.success(data='发布成功')
 
     @params_parse(_fields, location="json")
@@ -219,13 +244,34 @@ class ProjectView(HTTPMethodView):
         return Response.success(data='更新成功')
 
     @params_parse(_fields, location="json")
-    async def delete(self, request, kwargs):
-        project_id = kwargs.get('project_id')
+    async def delete(self, request, body):
+        project_id = body.get('project_id')
 
         session = request.ctx.session
+
+        select_project_stmt = select(Project).where(
+            Project.id == project_id
+        ).options(
+            selectinload(Project.server)
+        )
+        result = await session.execute(select_project_stmt)
+        project = result.scalars().first()
+        host = project.server.host
+        port = project.server.port
+
         async with session.begin():
-            delete_stmt = update(Project).where(Project.id == project_id).values(is_delete=True)
+            delete_version_stmt = delete(ProjectVersion).where(ProjectVersion.project_id == project_id)
+            delete_spider_stmt = delete(Spider).where(Spider.project_id == project_id)
+            delete_stmt = delete(Project).where(Project.id == project_id)
+
+            await session.execute(delete_version_stmt)
+            await session.execute(delete_spider_stmt)
             await session.execute(delete_stmt)
+
+            async with aiohttp.ClientSession() as http_session:
+                url = f'http://{host}:{port}/delproject.json'
+                data = {'project': project.name}
+                await http_session.post(url, json=data)
 
         return Response.success(data='删除成功')
 
