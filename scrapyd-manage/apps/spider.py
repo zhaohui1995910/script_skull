@@ -67,21 +67,26 @@ class ServerView(HTTPMethodView):
 
         return Response.success(data='success')
 
-    @params_parse(_fields, location='json')
-    async def delete(self, request, kwargs):
-        sid = kwargs.get('id')
+    async def delete(self, request):
+        sid = request.json.get('id')
         if not sid:
             raise InvalidUsage('`id` not null')
-
         session = request.ctx.session
-        async with session.begin():
-            server = await session.get(Server, sid)
-            if not server:
-                return Response.success(data=f'sid:{sid} no exist')
 
-            await session.delete(server)
+        select_server_stmt = select(Server).where(Server.id == sid)
+        result = await session.execute(select_server_stmt)
+        server = result.scalars().first()
 
-        return text('ok')
+        if not server:
+            return Response.fail(error=f'sid:{sid} no exist')
+
+        # todo 同时删除所属server_info, project,
+
+        await session.delete(server)
+
+        await session.commit()
+
+        return Response.success(data='删除成功')
 
 
 class ProjectView(HTTPMethodView):
@@ -259,19 +264,26 @@ class ProjectView(HTTPMethodView):
         host = project.server.host
         port = project.server.port
 
-        async with session.begin():
-            delete_version_stmt = delete(ProjectVersion).where(ProjectVersion.project_id == project_id)
-            delete_spider_stmt = delete(Spider).where(Spider.project_id == project_id)
-            delete_stmt = delete(Project).where(Project.id == project_id)
+        delete_version_stmt = delete(ProjectVersion).where(ProjectVersion.project_id == project_id)
+        delete_spider_stmt = delete(Spider).where(Spider.project_id == project_id)
+        delete_stmt = delete(Project).where(Project.id == project_id)
 
-            await session.execute(delete_version_stmt)
-            await session.execute(delete_spider_stmt)
-            await session.execute(delete_stmt)
+        await session.execute(delete_version_stmt)
+        await session.execute(delete_spider_stmt)
+        await session.execute(delete_stmt)
 
-            async with aiohttp.ClientSession() as http_session:
-                url = f'http://{host}:{port}/delproject.json'
-                data = {'project': project.name}
-                await http_session.post(url, json=data)
+        async with aiohttp.ClientSession() as http_session:
+            url = f'http://{host}:{port}/delproject.json'
+            data = {'project': project.name}
+            response = await http_session.post(url, data=data)
+            result = await response.json()
+
+            print('result', result)
+
+            if result.get('status') == 'error':
+                return Response.fail(data='删除失败', error=result.get('message'))
+
+        await session.commit()
 
         return Response.success(data='删除成功')
 
