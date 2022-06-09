@@ -9,11 +9,11 @@
       style="width: 100%"
       stripe="true"
     >
-      <el-table-column type="index" label=" " width="50" align="center" />
-      <el-table-column prop="host" label="Host" min-width="150" />
-      <el-table-column prop="port" label="Port" min-width="150" />
-      <el-table-column prop="hostname" label="HostName" />
-      <el-table-column prop="status" label="Status" min-width="80" />
+      <el-table-column type="index" label=" " width="50" align="center"/>
+      <el-table-column prop="host" label="Host" min-width="150"/>
+      <el-table-column prop="port" label="Port" min-width="150"/>
+      <el-table-column prop="hostname" label="HostName"/>
+      <el-table-column prop="status" label="Status" min-width="80"/>
       <el-table-column prop="pending" label="Pending" width="120">
         <template slot-scope="scope">
           <span style="color:#00CC00; font-weight:600">{{ scope.row.pending }}</span>
@@ -42,19 +42,19 @@
     <el-dialog title="Add Scrapyd-Server" :visible.sync="addServerDialog" width="30%">
       <el-form label-position="left" label-width="120px" :model="serverForm">
         <el-form-item label="IP">
-          <el-input v-model="serverForm.host" style="width:250px" />
+          <el-input v-model="serverForm.host" style="width:250px"/>
         </el-form-item>
         <el-form-item label="Port">
-          <el-input v-model="serverForm.port" style="width:250px" />
+          <el-input v-model="serverForm.port" style="width:250px"/>
         </el-form-item>
         <el-form-item label="Auth">
-          <el-switch v-model="serverForm.auth" />
+          <el-switch v-model="serverForm.auth"/>
         </el-form-item>
         <el-form-item label="Auth-UName">
-          <el-input v-model="serverForm.username" style="width:250px" />
+          <el-input v-model="serverForm.username" style="width:250px"/>
         </el-form-item>
         <el-form-item label="Auth-PWord">
-          <el-input v-model="serverForm.password" style="width:250px" />
+          <el-input v-model="serverForm.password" style="width:250px"/>
         </el-form-item>
       </el-form>
       <el-button type="primary" style="margin-left:10px;margin-top: 20px;" @click="handleAdd">Submit</el-button>
@@ -91,7 +91,9 @@ export default {
       this.listLoading = true
       serverList().then(response => {
         this.tableData = response.data
-        setTimeout(() => { this.listLoading = false }, 600)
+        setTimeout(() => {
+          this.listLoading = false
+        }, 600)
       })
     },
     handleAddServer() {
@@ -112,7 +114,7 @@ export default {
     handleDelete(index, row) {
       this.serverForm.host = row.host
       this.serverForm.port = row.port
-      serverDel(this.serverForm).then(response => {
+      serverDel({ id: row.id }).then(response => {
         if (response.code === 200) {
           this.tableData.splice(index, 1)
         }

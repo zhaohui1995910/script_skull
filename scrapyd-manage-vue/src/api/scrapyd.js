@@ -18,7 +18,7 @@ export function serverAdd(data) {
 
 export function serverDel(data) {
   return request({
-    url: '/scrapyd/servers',
+    url: '/scrapy/server',
     method: 'delete',
     data
   })
