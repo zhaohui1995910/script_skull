@@ -88,7 +88,7 @@ async def login(request, args):
         if not user:
             return Response.fail(
                 code=201,
-                message='',
+                data='',
                 error='"%s" 用户名不存在' % username
             )
         # 验证密码
@@ -121,7 +121,7 @@ async def login(request, args):
 async def user_data(request):
     result = {
         'name'        : 'admin',
-        'avatar'      : 'static/img/admin-header.jpg',
+        'avatar'      : 'http://127.0.0.1:8000/static/img/admin-header.jpg',
         'introduction': '',
         'roles'       : ['Spider'],
     }

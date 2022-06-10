@@ -41,7 +41,13 @@ class Server(BaseModel):
         cascade="all, delete",
         passive_deletes=True
     )
-    project = relationship('Project', back_populates='server')
+    project = relationship(
+        'Project',
+        uselist=False,
+        cascade="all, delete",
+        back_populates='server',
+        passive_deletes=True
+    )
 
 
 class ServerInfo(BaseModel):
@@ -54,7 +60,10 @@ class ServerInfo(BaseModel):
     pending = Column(INTEGER(5), nullable=False)
     running = Column(INTEGER(5), nullable=False)
 
-    server_id = Column(INTEGER, ForeignKey('scrapy_server.id', ondelete='CASCADE'))
+    server_id = Column(
+        INTEGER,
+        ForeignKey('scrapy_server.id', ondelete='CASCADE')
+    )
 
 
 class Project(BaseModel):
@@ -63,11 +72,11 @@ class Project(BaseModel):
     id = Column(INTEGER(11), primary_key=True)
     name = Column(String(100), nullable=False)
     desc = Column(String(255), default='', nullable=False)
-    server_id = Column(ForeignKey('scrapy_server.id'), nullable=False)
 
     server = relationship('Server', back_populates='project', uselist=False)
-    jobs = relationship('Job', back_populates='project')
     is_delete = Column(BOOLEAN, nullable=False, default=False)
+    server_id = Column(INTEGER, ForeignKey('scrapy_server.id', ondelete='CASCADE'), nullable=False)
+
     version = relationship(
         'ProjectVersion',
         uselist=True,
@@ -88,7 +97,7 @@ class ProjectVersion(BaseModel):
     code = Column(String(20), nullable=False)
     is_delete = Column(BOOLEAN, nullable=False, default=False, doc='是否删除')
     is_spider = Column(BOOLEAN, nullable=False, default=False, doc='是否获取爬虫列表，写入Spider表')
-    project_id = Column(INTEGER, ForeignKey('scrapy_project.id'))
+    project_id = Column(INTEGER, ForeignKey('scrapy_project.id', ondelete='CASCADE'))
 
 
 class Spider(BaseModel):
@@ -97,11 +106,10 @@ class Spider(BaseModel):
 
     name = Column(String(50), doc='爬虫名称')
     desc = Column(String(255), doc='爬虫简介')
-    project_id = Column(INTEGER, ForeignKey('scrapy_project.id'))
     version_code = Column(String(20), nullable=False)
+    project_id = Column(INTEGER, ForeignKey('scrapy_project.id', ondelete='CASCADE'))
 
-    project = relationship('Project', uselist=False)
-    tasks = relationship('Task', back_populates='spider')
+    project = relationship('Project', uselist=False, back_populates='spiders')
 
 
 class Task(BaseModel):
@@ -109,9 +117,7 @@ class Task(BaseModel):
     id = Column(INTEGER(11), primary_key=True)
     name = Column(String(50), nullable=False, doc='任务名称')
     desc = Column(String(255), nullable=True, doc='任务简介')
-    spider_id = Column(INTEGER, ForeignKey('scrapy_spider.id'), nullable=False)
-
-    spider = relationship('Spider', uselist=False)
+    spider_id = Column(INTEGER(5), nullable=False)
 
     task_timer = relationship(
         'TaskTimer',
@@ -167,10 +173,8 @@ class Job(BaseModel):
     run_time = Column(String(100), default='', doc='运行时长')
     items = Column(INTEGER(11), default=0, doc='数据条数')
     pages = Column(INTEGER(11), default=0, doc='请求数量')
-    project_id = Column(INTEGER, ForeignKey('scrapy_project.id'))
+    project_id = Column(INTEGER(11), nullable=True)
     scrapyd_job_id = Column(String(100), nullable=False)  # 启动scrapyd返回的jobid
-
-    project = relationship('Project', uselist=False)
 
 
 __all__ = [

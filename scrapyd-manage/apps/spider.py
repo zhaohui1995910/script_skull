@@ -80,10 +80,7 @@ class ServerView(HTTPMethodView):
         if not server:
             return Response.fail(error=f'sid:{sid} no exist')
 
-        # todo 同时删除所属server_info, project,
-
         await session.delete(server)
-
         await session.commit()
 
         return Response.success(data='删除成功')
@@ -316,7 +313,7 @@ class SpiderView(HTTPMethodView):
     @params_parse(get_fields, location="query")
     async def get(self, request, kwargs):
         """爬虫列表"""
-        page = kwargs.get('page')
+        page = kwargs.get('page', 1)
         session = request.ctx.session
         async with session.begin():
             count_stmt = select(func.count()).select_from(Spider)
@@ -366,6 +363,7 @@ class SpiderView(HTTPMethodView):
             if not item:
                 log.logger.error('未查询到爬虫，sql： %s' % select_stmt)
                 return Response.fail(data='启动失败', code=200)
+
         url = 'http://{}:{}/schedule.json'.format(
             item.project.server.host,
             item.project.server.port
@@ -374,21 +372,23 @@ class SpiderView(HTTPMethodView):
             'project' : item.project.name,
             'spider'  : item.name,
             '_version': item.version_code,
-            'setting' : kwargs['settings'],
+            # 'setting' : json.dumps(kwargs['settings']),
         }
-        http_session = aiohttp.ClientSession()
-        async with http_session.post(url, json=post_json) as response:
-            result_json = await response.json()
-            if result_json.get('jobid'):
-                job_item = Job(
-                    name=result_json.get('jobid'),
-                    status='pending',
-                    project_id=item.project.id,
-                    create_datetime=datetime.datetime.now(),
-                )
-                async with session.begin():
-                    session.add(job_item)
-        await http_session.close()
+        async with aiohttp.ClientSession() as http_session:
+            async with http_session.post(url, data=post_json) as response:
+                result = await response.json()
+                if not result.get('jobid'):
+                    return Response.fail(data='启动失败', error=result.get('message'))
+
+        job_item = Job(
+            name=f'{item.name}_{int(time.time() * 1000)}',
+            status='pending',
+            project_id=item.project.id,
+            scrapyd_job_id=result.get('jobid'),
+            create_datetime=datetime.datetime.now(),
+        )
+        async with session.begin():
+            session.add(job_item)
 
         return Response.success(data='启动成功')
 

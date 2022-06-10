@@ -24,6 +24,8 @@ CORS(app, automatic_options=True)
 cache = Cache(Cache.MEMORY)
 app.ctx.cache = cache
 
+app.static('static', './static')
+
 auto_discover(
     app,
     'middleware',

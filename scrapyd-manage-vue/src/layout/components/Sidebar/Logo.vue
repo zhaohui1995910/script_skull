@@ -25,7 +25,7 @@ export default {
   data() {
     return {
       title: 'Spider Data',
-      logo: '/static/img/lumilogomin.png'
+      logo: '/lumilogomin.png'
     }
   }
 }

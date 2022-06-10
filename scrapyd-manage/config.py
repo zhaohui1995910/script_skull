@@ -42,7 +42,7 @@ class BaseConfig:
                 "formatter": "access",
                 "filename" : "logs/access.log",
                 "encoding" : "utf-8"
-            }
+            },
         },
         formatters={
             "generic": {

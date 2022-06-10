@@ -3,6 +3,7 @@
 # @Author  : 10867
 # @FileName: middleware.py
 # @Software: PyCharm
+import pkg_resources
 from sanic import Sanic
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -28,9 +29,12 @@ async def vialdate_user_token(request):
     no_require_token = {
         '/user/login',
         '/user/test',
-        '/user/signin'
+        '/user/signin',
     }
     if request.path in no_require_token:
+        return None
+
+    if '/static/' in request.path:
         return None
 
     token = request.token
