@@ -24,7 +24,7 @@ export default {
   },
   data() {
     return {
-      title: 'Spider Data',
+      title: 'Spiderd Manage',
       logo: '/lumilogomin.png'
     }
   }

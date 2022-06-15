@@ -50,7 +50,7 @@
 
     <el-dialog title="Spider" :visible.sync="spiderDialog" width="60%">
       <el-table
-        :loading="projectSpiderDialog"
+        v-loading="projectSpiderDialog"
         :data="currentSpiderList"
         :header-cell-style="{background:'#eef1f6',color:'#606266'}"
       >
@@ -211,16 +211,17 @@ export default {
       spiderList({ page: 1, project: row.id, version: row.code }).then(response => {
         this.currentSpiderList = response.data.spiders
       })
-      setTimeout(() => { this.tableLoading = false }, 600)
+      setTimeout(() => { this.tableLoading = false; this.projectSpiderDialog = false }, 600)
     },
     handleRun(index, row) {
+      this.projectSpiderDialog = true
       this.spiderForm.id = row.id
       this.spiderForm.version = row.version
       runSpider(this.spiderForm).then(response => {
         if (response.code === 200) {
           this.$message.success('爬虫启动成功')
-          this.projectSpiderDialog = false
         }
+        this.projectSpiderDialog = false
       })
     },
     handleEditProject(index, row) {

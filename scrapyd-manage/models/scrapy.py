@@ -117,6 +117,10 @@ class Task(BaseModel):
     id = Column(INTEGER(11), primary_key=True)
     name = Column(String(50), nullable=False, doc='任务名称')
     desc = Column(String(255), nullable=True, doc='任务简介')
+    status = Column(BOOLEAN, nullable=False, default=False, doc='任务状态')
+    p_time = Column(DATETIME, nullable=True, doc='任务上次运行时间')
+    n_time = Column(DATETIME, nullable=True, doc='任务下次运行时间')
+    t_count = Column(INTEGER, nullable=True, doc='任务运行次数')
     spider_id = Column(INTEGER(5), nullable=False)
 
     task_timer = relationship(

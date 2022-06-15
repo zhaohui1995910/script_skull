@@ -89,7 +89,7 @@ export function spiderList(query) {
 
 export function addTask(data) {
   return request({
-    url: '/scrapyd/tasks/info',
+    url: '/scrapy/task',
     method: 'post',
     data
   })
@@ -105,7 +105,7 @@ export function updateTask(data) {
 
 export function taskList(query) {
   return request({
-    url: '/scrapyd/tasks/info',
+    url: '/scrapy/task',
     method: 'get',
     params: query
   })
@@ -113,8 +113,8 @@ export function taskList(query) {
 
 export function deleteTask(data) {
   return request({
-    url: '/scrapyd/tasks/delete',
-    method: 'post',
+    url: '/scrapy/task',
+    method: 'delete',
     data
   })
 }

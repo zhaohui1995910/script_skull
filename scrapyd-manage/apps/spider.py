@@ -94,6 +94,7 @@ class ProjectView(HTTPMethodView):
         'project'   : fields.Str(required=False, default=None),
         'project_id': fields.Integer(required=False, default=None),
         'desc'      : fields.Str(required=False, default=None, validate=lambda x: len(x) < 255),
+        'server_id' : fields.Integer(required=False)
     }
 
     result_fields = {
@@ -111,8 +112,8 @@ class ProjectView(HTTPMethodView):
 
     @params_parse(_fields, location="query")
     async def get(self, request, kwargs):
-        page: int = kwargs.get('page')
-        project: str = kwargs.get('project')
+        page: int = kwargs.get('page', 1)
+        project_name: str = kwargs.get('project')
         session = request.ctx.session
 
         async with session.begin():
@@ -121,10 +122,13 @@ class ProjectView(HTTPMethodView):
             count_result = await session.execute(count_stmt)
             project_count = count_result.scalar()
 
-            if project:
-                stmt = select(Project).where(Project.name.like("%{}%".format(project)))
-            else:
-                stmt = select(Project)
+            stmt = select(Project)
+            if project_name:
+                stmt = select(Project).where(Project.name.like("%{}%".format(project_name)))
+
+            if kwargs.get('spider_id'):
+                stmt.where(Project.server_id == kwargs.get('spider_id'))
+
             stmt = stmt.where(Project.is_delete == 0)
             # 加载子表
             stmt = stmt.options(selectinload(Project.server), selectinload(Project.version))
@@ -420,50 +424,69 @@ class TaskView(HTTPMethodView):
         'timer'    : fields.Dict(required=True),
         'settings' : fields.Dict(required=True),
     }
+    timer = {
+        'year'              : fields.Str(attribute='year'),
+        'month'             : fields.Str(attribute='month'),
+        'day'               : fields.Str(attribute='day'),
+        'week'              : fields.Str(attribute='week'),
+        'day_of_week'       : fields.Str(attribute='day_of_week'),
+        'hour'              : fields.Str(attribute='hour'),
+        'minute'            : fields.Str(attribute='minute'),
+        'second'            : fields.Str(attribute='second'),
+        'start_date'        : fields.Str(attribute='start_date'),
+        'end_date'          : fields.Str(attribute='end_date'),
+        'timezone'          : fields.Str(attribute='timezone'),
+        'jitter'            : fields.Str(attribute='jitter'),
+        'misfire_grace_time': fields.Str(attribute='misfire_grace_time'),
+        'coalesce'          : fields.Str(attribute='coalesce'),
+        'max_instances'     : fields.Str(attribute='max_instances'),
+    }
     result_fields = {
-        'id'       : fields.Integer(),
-        'name'     : fields.Str(),
-        'desc'     : fields.Str(),
-        'spider_id': fields.Integer(),
-        'settings' : fields.Str(attribute='task_setting.content'),
-        'timer'    : {
-            'year'              : fields.Str(attribute='task_timer.year'),
-            'month'             : fields.Str(attribute='task_timer.month'),
-            'day'               : fields.Str(attribute='task_timer.day'),
-            'week'              : fields.Str(attribute='task_timer.week'),
-            'day_of_week'       : fields.Str(attribute='task_timer.day_of_week'),
-            'hour'              : fields.Str(attribute='task_timer.hour'),
-            'minute'            : fields.Str(attribute='task_timer.minute'),
-            'second'            : fields.Str(attribute='task_timer.second'),
-            'start_date'        : fields.Str(attribute='task_timer.start_date'),
-            'end_date'          : fields.Str(attribute='task_timer.end_date'),
-            'timezone'          : fields.Str(attribute='task_timer.timezone'),
-            'jitter'            : fields.Str(attribute='task_timer.jitter'),
-            'misfire_grace_time': fields.Str(attribute='task_timer.misfire_grace_time'),
-            'coalesce'          : fields.Str(attribute='task_timer.coalesce'),
-            'max_instances'     : fields.Str(attribute='task_timer.max_instances'),
-        }
+        'id'      : fields.Integer(),
+        'name'    : fields.Str(),
+        'desc'    : fields.Str(),
+        'status'  : fields.Boolean(),
+        'spider'  : fields.Str(),
+        'project' : fields.Str(),
+        'version' : fields.Str(),
+        'p_time'  : fields.Str(),
+        'n_time'  : fields.Str(),
+        't_count' : fields.Str(),
+        'settings': fields.Str(attribute='task_setting.content'),
+        'timer'   : fields.Nested(Schema.from_dict(timer), attribute='task_timer')
     }
 
     @params_parse(get_fields, location="query")
     async def get(self, request, kwargs):
         """定时任务列表"""
-        print(kwargs)
+        page = kwargs.get('page', 1)
         session = request.ctx.session
         select_stmt = select(Task).options(
             selectinload(Task.task_timer),
             selectinload(Task.task_setting)
         )
-        select_stmt = select_stmt.offset((kwargs['page'] - 1) * self._limit).limit(self._limit)
-        print('sql', select_stmt)
+        select_stmt = select_stmt.offset((page - 1) * self._limit).limit(self._limit)
         result = await session.execute(select_stmt)
         item_data: list = result.scalars().all()
-        print('item data', item_data)
+
+        # todo 增加响应字段 status，spider, project p_time, n_time t_count, server_node
+        data_list = []
+        for item in item_data:
+            select_stmt = select(Spider).where(Spider.id == item.spider_id).options(
+                selectinload(Spider.project)
+            )
+
+            result = await session.execute(select_stmt)
+            spider_item = result.scalars().first()
+
+            data = item.to_dict()
+            data['project'] = spider_item.project.name
+            data['version'] = spider_item.version_code
+            data['spider'] = spider_item.name
+            data_list.append(data)
 
         result_schema = Schema.from_dict(self.result_fields)(many=True)
-        data = result_schema.dump(item_data)
-
-        return Response.success(data={'data': data})
+        return Response.success(data=result_schema.dump(data_list))
 
     @params_parse(post_fields, location="json")
     async def post(self, request, kwargs):
@@ -474,7 +497,10 @@ class TaskView(HTTPMethodView):
             insert_stmt = insert(Task).values(
                 name=kwargs.get('name'),
                 desc=kwargs.get('desc'),
+                status=True,
+                t_count=0,
                 spider_id=kwargs.get('spider_id'),
+                create_datetime=datetime.datetime.now()
             )
 
             insert_result = await session.execute(insert_stmt)
@@ -484,7 +510,8 @@ class TaskView(HTTPMethodView):
             task_timer.create_datetime = datetime.datetime.now()
             task_timer.task_id = task_id
 
-            task_setting = TaskSetting(**kwargs.get('settings'))
+            task_setting = TaskSetting()
+            task_setting.content = json.dumps(kwargs.get('settings'))
             task_setting.create_datetime = datetime.datetime.now()
             task_setting.task_id = task_id
 
@@ -499,8 +526,43 @@ class TaskView(HTTPMethodView):
                 **kwargs.get('timer'),
                 kwargs={'task_id': task_id},
             )
+            # update task next run time
+            t = scheduler.get_job(kwargs.get('name'))
+            update(Task).where(id=task_id).values(n_time=t.next_run_time)
 
         return Response.success(data='创建成功')
+
+    @params_parse(
+        {
+            'task_id'  : fields.Integer(required=True),
+            'desc'     : fields.Str(default=''),
+            'spider_id': fields.Integer(required=True),
+            'timer'    : fields.Dict(required=True),
+            'settings' : fields.Dict(required=True),
+        },
+        location="json"
+    )
+    async def put(self, request, kwargs):
+        # 更新版本，定时周期
+        pass
+
+    @params_parse({'task_id': fields.Integer(required=True)}, location="json")
+    async def delete(self, request, kwargs):
+        task_id = kwargs.get('task_id')
+
+        session = request.ctx.session
+        async with session.begin():
+            select_stmt = select(Task).where(Task.id == task_id)
+            select_result = await session.execute(select_stmt)
+            task_item = select_result.scalars().first()
+
+            scheduler = app.ctx.scheduler
+            if scheduler.get_job(task_item.name):
+                scheduler.remove_job(task_item.name)
+
+            await session.delete(task_item)
+
+        return Response.success(data='删除成功')
 
 
 class LogView(HTTPMethodView):
@@ -523,12 +585,12 @@ async def scheduler_update_job():
         ),
     ).where(
         Job.status.in_(['running', 'pending'])
-    )
+    ).limit(10)
     result = await session.execute(job_select)
     job_list = result.scalars()
     for job in job_list:
-        host = job.project.server.host
-        port = job.project.server.host
+        host = await job.project.server.host
+        port = await job.project.server.host
         project_name = job.project.name
         url = f'http://{host}:{port}/listjobs.json?project={project_name}'
         async with http_session.get(url) as response:
@@ -589,37 +651,44 @@ async def schedule_task_spider(task_id: int):
     # 根据爬虫对象查询项目对象
     spider_id = task.spider_id
     select_spider_stmt = select(Spider).where(Spider.id == spider_id).options(
-        selectinload(Spider.project).options(Project.server)
+        selectinload(Spider.project)
     )
     spider_result = await session.execute(select_spider_stmt)
     spider = spider_result.scalars().first()
 
+    server_result = await session.execute(select(Server).where(Server.id == spider.project.server_id))
+    server_item = server_result.scalars().first()
+
     # 启动爬虫
-    host = spider.project.server.host
-    port = spider.project.server.port
-    url = f'http://{host}:{port}/schedule.json'
+    url = f'http://{server_item.host}:{server_item.port}/schedule.json'
     post_data = {
         'project' : spider.project.name,
         'spider'  : spider.name,
-        '_version': spider.project.version,
-        # 'jobid'   : str(time.time() * 1000),  # 不传递，scrapyd会自动生成jobid  例如："6487ec79947edab326d6db28a2d86511e8247444"
+        '_version': spider.version_code,
         'settings': json.loads(task.task_setting.content),
         'priority': 0,
     }
 
-    async with session.begin():
-        async with http_session.post(url, json=post_data) as response:
-            schedule_result = await response.json()
-            job_id = schedule_result.get('jobid')
+    async with http_session.post(url, data=post_data) as response:
+        schedule_result = await response.json()
+        job_id = schedule_result.get('jobid')
 
-            job_insert_stmt = insert(Job).values(
-                name=task.name + job_id,
-                static='pending',
-                project_id=spider.project.id,
-                scrapyd_job_id=job_id,
-                create_datetime=datetime.datetime.now()
-            )
-            await session.execute(job_insert_stmt)
+        job_insert_stmt = insert(Job).values(
+            name=f'{task.name}_{job_id[-6:]}',
+            status='pending',
+            project_id=spider.project.id,
+            scrapyd_job_id=job_id,
+            create_datetime=datetime.datetime.now()
+        )
+        await session.execute(job_insert_stmt)
 
+        # 更新任务参数
+        scheduler = app.ctx.scheduler
+        t = scheduler.get_job(task.name)
+        task.t_count += 1
+        task.p_time = datetime.datetime.now()
+        task.n_time = t.next_run_time
+
+    await session.commit()
     await http_session.close()
     await session.close()

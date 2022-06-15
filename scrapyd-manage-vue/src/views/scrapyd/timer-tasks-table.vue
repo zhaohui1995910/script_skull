@@ -1,18 +1,12 @@
 <template>
   <div class="app-container">
-    <div style="margin-bottom:10px">
-      <el-select v-model="projectSelect" size="mini" clearable placeholder="请选择" style="width:200px">
-        <el-option v-for="item in projectOption" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-button type="primary" style="margin-left:10px" size="mini" @click="AddTask">Add Task</el-button>
-    </div>
     <el-table
+      v-loading="tableLoading"
       :data="taskInfoList.filter(data => !projectSelect || data.project === projectSelect)"
       :header-cell-style="{background:'#eef1f6',color:'#606266'}"
       :row-style="{height:'10px'}"
       :cell-style="{padding:'5px'}"
       style="width: 100%"
-      stripe="true"
     >
       <el-table-column width="50" type="expand" align="center">
         <template slot-scope="props">
@@ -33,9 +27,9 @@
             <el-form-item label="week"><span>{{ props.row.timer.week }}</span></el-form-item>
             <el-form-item label="jitter"><span>{{ props.row.timer.jitter }}</span></el-form-item>
 
-            <el-form-item />
             <el-form-item label="day_of_week"><span>{{ props.row.timer.day_of_week }}</span></el-form-item>
-            <el-form-item label="misfire_grace_time"><span>{{ props.row.timer.misfire_grace_time }}</span></el-form-item>
+            <el-form-item label="misfire_grace_time"><span>{{ props.row.timer.misfire_grace_time }}</span>
+            </el-form-item>
 
             <el-form-item />
             <el-form-item label="hour"><span>{{ props.row.timer.hour }}</span></el-form-item>
@@ -49,13 +43,15 @@
             <el-form-item label="second"><span>{{ props.row.timer.second }}</span></el-form-item>
             <el-form-item />
 
-            <el-form-item label="settings_arguments"><span>{{ props.row.settings }}</span></el-form-item>
-            <el-form-item />
             <el-form-item label="selected_nodes"><span>{{ props.row.server }}</span></el-form-item>
+
+            <el-form-item class="demo-table-expand task-sttings" label="settings_arguments" style="width: 50%">
+              <json-viewer v-if="props.row.settings" :value="JSON.parse(props.row.settings)" :expand-depth="1" />
+            </el-form-item>
           </el-form>
         </template>
       </el-table-column>
-      <el-table-column type="index" label="TID" width="50" />
+      <el-table-column type="index" align="left" label="TID" width="50" />
       <el-table-column prop="name" label="Name" width="180" />
       <el-table-column prop="desc" label="Desc" show-overflow-tooltip />
       <el-table-column prop="project" label="Project" width="160" />
@@ -66,14 +62,18 @@
             <a class="state safe" @click="handleStatusClick(scope.row.status, scope.row.id)">{{ scope.row.status }}</a>
           </label>
           <label v-show="scope.row.status == false" :title="scope.row.status">
-            <a class="state normal" @click="handleStatusClick(scope.row.status, scope.row.id)">{{ scope.row.status }}</a>
+            <a class="state normal" @click="handleStatusClick(scope.row.status, scope.row.id)">
+              {{ scope.row.status }}</a>
           </label>
         </template>
       </el-table-column>
-      <el-table-column prop="prev_run_time" label="PRTime" align="center" width="180" />
-      <el-table-column prop="next_run_time" label="NRTime" align="center" width="180" />
-      <el-table-column prop="run_count" label="TRCount" width="80" />
+      <el-table-column prop="p_time" label="PRTime" align="center" width="180" />
+      <el-table-column prop="n_time" label="NRTime" align="center" width="180" />
+      <el-table-column prop="t_count" label="TRCount" width="80" />
       <el-table-column fixed="right" width="300" label="Opthons" header-align="center" align="right">
+        <template slot="header">
+          <el-button type="primary" style="margin-left:10px" size="mini" @click="AddTask">Add Task</el-button>
+        </template>
         <template slot-scope="scope">
           <el-button size="mini" type="info" @click="handleHistory(scope.$index, scope.row)">History</el-button>
           <el-button size="mini" type="primary" @click="handleEdit(scope.$index, scope.row)">Edit</el-button>
@@ -85,26 +85,54 @@
     <el-dialog title="Spider-Task" :visible.sync="spiderTaskForm" style="">
       <el-form id="form" ref="form" :model="form" label-width="200px" size="mini">
         <el-form-item label="server">
-          <el-select id="node" v-model="form.server" placeholder="Select a node" @change="loadProjects">
-            <el-option v-for="SCRAPYD_SERVER in SCRAPYD_SERVERS" :key="SCRAPYD_SERVER" :label="SCRAPYD_SERVER.label" :value="SCRAPYD_SERVER.label" />
+          <el-select
+            id="node"
+            v-model="form.server"
+            placeholder="Select a node"
+            @visible-change="loadServer"
+            @change="loadProjects"
+          >
+            <el-option
+              v-for="SCRAPYD_SERVER in SCRAPYD_SERVERS"
+              :key="SCRAPYD_SERVER.id"
+              :label="SCRAPYD_SERVER.host+':'+SCRAPYD_SERVER.port"
+              :value="SCRAPYD_SERVER"
+            />
           </el-select>
         </el-form-item>
 
         <el-form-item label="project" prop="selectedProject">
-          <el-select id="projects" v-model="form.project" placeholder="Select a project" no-data-text="No projects found" @visible-change="loadVersions">
-            <el-option v-for="project in projects" :key="project" :label="project" :value="project" />
+          <el-select
+            id="projects"
+            v-model="form.project"
+            placeholder="Select a project"
+            no-data-text="No projects found"
+            @change="loadVersions"
+          >
+            <el-option v-for="project in projects" :key="project.name" :label="project.name" :value="project" />
           </el-select>
         </el-form-item>
 
         <el-form-item label="version" prop="selectedVersion">
-          <el-select id="versions" v-model="form.version" placeholder="Select a version" no-data-text="Select a project first..." @change="loadSpiders">
-            <el-option v-for="version in versions" :key="version" :label="version" :value="version" />
+          <el-select
+            id="versions"
+            v-model="form.version"
+            placeholder="Select a version"
+            no-data-text="Select a project first..."
+            @change="loadSpiders"
+          >
+            <el-option v-for="version in versions" :key="version.code" :label="version.code" :value="version" />
           </el-select>
         </el-form-item>
 
         <el-form-item label="spider" prop="selectedSpider">
-          <el-select id="spiders" v-model="form.spider" placeholder="Select a spider" no-data-text="Select a version first...">
-            <el-option v-for="spider in spiders" :key="spider.name" :label="spider.name" :value="spider.name" />
+          <el-select
+            id="spiders"
+            v-model="form.spider"
+            placeholder="Select a spider"
+            no-data-text="Select a version first..."
+          >
+            <el-option v-for="spider in spiders" :key="spider.name" :label="spider.name" :value="spider" />
           </el-select>
         </el-form-item>
 
@@ -136,7 +164,11 @@
 
           <el-form-item label="ROBOTSTXT_OBEY">
             <el-col :span="9">
-              <el-select v-model="form.settings.ROBOTSTXT_OBEY" placeholder="whether to respect robots.txt policies" clearable>
+              <el-select
+                v-model="form.settings.ROBOTSTXT_OBEY"
+                placeholder="whether to respect robots.txt policies"
+                clearable
+              >
                 <el-option label="True" value="True" />
                 <el-option label="False" value="False" />
               </el-select>
@@ -145,7 +177,11 @@
 
           <el-form-item label="COOKIES_ENABLED">
             <el-col :span="9">
-              <el-select v-model="form.settings.COOKIES_ENABLED" placeholder="whether to enable cookies middleware" clearable>
+              <el-select
+                v-model="form.settings.COOKIES_ENABLED"
+                placeholder="whether to enable cookies middleware"
+                clearable
+              >
                 <el-option label="True" value="True" />
                 <el-option label="False" value="False" />
               </el-select>
@@ -166,20 +202,30 @@
 
           <el-form-item label="additional">
             <el-col :span="9">
-              <el-input v-model="form.settings.additional" placeholder="key=value  换行分隔" type="textarea" clearable style="width:400px" />
+              <el-input
+                v-model="form.settings.additional"
+                placeholder="key=value  换行分隔"
+                type="textarea"
+                clearable
+                style="width:400px"
+              />
             </el-col>
           </el-form-item>
         </div>
 
         <el-form-item label="timer task">
-          <el-switch v-model="form.expandTimerTask" active-color="#67c23a" @change="timerTaskSwitch" />
+          <el-switch v-model="form.expandTimerTask" active-color="#67c23a" />
         </el-form-item>
 
         <div v-show="form.expandTimerTask" id="time_task">
 
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="year (*)">
             <el-col :span="9">
-              <el-input v-model="form.timer.year" placeholder="4-digit year, e.g. 2019, defaults to * for any year" clearable />
+              <el-input
+                v-model="form.timer.year"
+                placeholder="4-digit year, e.g. 2019, defaults to * for any year"
+                clearable
+              />
             </el-col>
           </el-form-item>
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="month (*)">
@@ -189,7 +235,11 @@
           </el-form-item>
           <el-form-item class="main_settings" label="day (*)">
             <el-col :span="9">
-              <el-input v-model="form.timer.day" placeholder="day (1-31); CAN BE 1st mon OR last sun OF THE MONTH" clearable />
+              <el-input
+                v-model="form.timer.day"
+                placeholder="day (1-31); CAN BE 1st mon OR last sun OF THE MONTH"
+                clearable
+              />
             </el-col>
           </el-form-item>
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="week (*)">
@@ -201,18 +251,31 @@
           <el-form-item class="main_settings" label="day_of_week (*)">
             <el-col :span="9">
               <el-select v-model="form.timer.day_of_week" placeholder="multiple select or leave blank for *">
-                <el-option v-for="item in day_of_week_options" :key="item.value" :label="item.label" :value="item.value" />
+                <el-option
+                  v-for="item in day_of_week_options"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
               </el-select>
             </el-col>
           </el-form-item>
           <el-form-item class="main_settings" label="hour (*)">
             <el-col :span="9">
-              <el-input v-model="form.timer.hour" placeholder="hour (0-23); 9,17,8-20/4 equals to 8,9,12,16,17,20" clearable />
+              <el-input
+                v-model="form.timer.hour"
+                placeholder="hour (0-23); 9,17,8-20/4 equals to 8,9,12,16,17,20"
+                clearable
+              />
             </el-col>
           </el-form-item>
           <el-form-item class="main_settings" label="minute (0)">
             <el-col :span="9">
-              <el-input v-model="form.timer.minute" placeholder="minute (0-59); defaults to 0, type */10 to fire every 10 minutes" clearable />
+              <el-input
+                v-model="form.timer.minute"
+                placeholder="minute (0-59); defaults to 0, type */10 to fire every 10 minutes"
+                clearable
+              />
             </el-col>
           </el-form-item>
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="second (0)">
@@ -222,25 +285,48 @@
           </el-form-item>
 
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="start_date">
-            <el-date-picker v-model="form.timer.start_date" type="datetime" placeholder="optional (inclusive)" default-time="12:00:00" value-format="yyyy-MM-dd HH:mm:ss" />
+            <el-date-picker
+              v-model="form.timer.start_date"
+              type="datetime"
+              placeholder="optional (inclusive)"
+              default-time="12:00:00"
+              value-format="yyyy-MM-dd HH:mm:ss"
+            />
           </el-form-item>
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="end_date">
-            <el-date-picker v-model="form.timer.end_date" type="datetime" placeholder="optional (inclusive)" value-format="yyyy-MM-dd HH:mm:ss" />
+            <el-date-picker
+              v-model="form.timer.end_date"
+              type="datetime"
+              placeholder="optional (inclusive)"
+              value-format="yyyy-MM-dd HH:mm:ss"
+            />
           </el-form-item>
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="timezone">
             <el-col :span="9">
-              <el-input v-model="form.timer.timezone" :placeholder="`defaults to ` + form._timezone + `, (via: from tzlocal import get_localzone)`" clearable />
+              <el-input
+                v-model="form.timer.timezone"
+                :placeholder="`defaults to ` + form._timezone + `, (via: from tzlocal import get_localzone)`"
+                clearable
+              />
             </el-col>
           </el-form-item>
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="jitter (0)">
             <el-col :span="9">
-              <el-input v-model="form.timer.jitter" placeholder="execute task by random delay of [-N, +N] secs, defaults to 0." clearable />
+              <el-input
+                v-model="form.timer.jitter"
+                placeholder="execute task by random delay of [-N, +N] secs, defaults to 0."
+                clearable
+              />
             </el-col>
           </el-form-item>
 
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="misfire_grace_time (600)">
             <el-col :span="9">
-              <el-input v-model="form.timer.misfire_grace_time" placeholder="max tolerance of delay for misfired task, defaults to 600 secs." clearable />
+              <el-input
+                v-model="form.timer.misfire_grace_time"
+                placeholder="max tolerance of delay for misfired task, defaults to 600 secs."
+                clearable
+              />
             </el-col>
           </el-form-item>
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="coalesce">
@@ -253,7 +339,11 @@
           </el-form-item>
           <el-form-item v-show="form.expandTimerTaskMoreSettings" label="max_instances (1)">
             <el-col :span="9">
-              <el-input v-model="form.timer.max_instances" placeholder="max concurrently running instances of this task, defaults to 1." clearable />
+              <el-input
+                v-model="form.timer.max_instances"
+                placeholder="max concurrently running instances of this task, defaults to 1."
+                clearable
+              />
             </el-col>
           </el-form-item>
 
@@ -270,7 +360,11 @@
     </el-dialog>
 
     <el-dialog class="hustory" title="Tasks-History" :lock-scroll="false" :modal="true" :visible.sync="taskHistoryForm">
-      <el-table :data="taskHistoryList.slice((historyCurrentPage-1)*pageSize, historyCurrentPage*pageSize)" style="width: 100%;margin-top:10px" stripe="true">
+      <el-table
+        :data="taskHistoryList.slice((historyCurrentPage-1)*pageSize, historyCurrentPage*pageSize)"
+        style="width: 100%;margin-top:10px"
+        stripe="true"
+      >
         <el-table-column type="index" label="Id" header-align="center" align="center" width="35" />
         <el-table-column prop="job" label="JName" show-overflow-tooltip header-align="center" align="center" />
         <el-table-column prop="status" label="Status" header-align="center" align="center" />
@@ -297,19 +391,37 @@
       />
     </el-dialog>
     <el-dialog title="Log" :visible.sync="LogForm">
-      <div><pre>{{ logInfoData }}</pre></div>
+      <div>
+        <pre>{{ logInfoData }}</pre>
+      </div>
     </el-dialog>
   </div>
 </template>
 
 <script>
-import { taskList, updateTask, addTask, projectList, projectSpiderList, statusTask, deleteTask, jobList, LogInfo, serverList } from '@/api/scrapyd'
+import 'vue-json-viewer/style.css'
+import JsonViewer from 'vue-json-viewer'
+import {
+  taskList,
+  updateTask,
+  addTask,
+  projectList,
+  statusTask,
+  deleteTask,
+  jobList,
+  LogInfo,
+  serverList,
+  spiderList
+} from '@/api/scrapyd'
 
 export default {
   name: 'TimerTasks',
-
+  components: {
+    JsonViewer
+  },
   data() {
     return {
+      tableLoading: false,
       Updatebutton: null,
       Addbutton: null,
       projectOption: [],
@@ -320,7 +432,7 @@ export default {
         false: 'state normal'
       },
       spiderTaskForm: false,
-      SCRAPYD_SERVERS: [1, 2, 3],
+      SCRAPYD_SERVERS: [],
       projects: [],
       versions: [],
       spiders: [],
@@ -424,9 +536,6 @@ export default {
   },
   created() {
     this.getTaskInfoList()
-    serverList().then(response => {
-      this.SCRAPYD_SERVERS = response.data
-    })
   },
   methods: {
     handleEdit(index, row) {
@@ -448,11 +557,10 @@ export default {
       })
     },
     handleDelete(index, row) {
-      console.log('handleEdit')
-      this.statusForm.taskId = row.id
-      this.statusForm.taskName = row.name
-      deleteTask(this.statusForm).then(response => {
+      this.tableLoading = true
+      deleteTask({ task_id: row.id }).then(response => {
         this.getTaskInfoList()
+        this.tableLoading = false
       })
     },
     handleHistory(index, row) {
@@ -479,8 +587,16 @@ export default {
       })
     },
     handleAddTask() {
-      addTask(this.form).then(response => {
-        if (response.code === 20000) {
+      var formData = {
+        spider_id: this.form.spider.id,
+        name: this.form.name,
+        desc: this.form.desc,
+        trigger: this.form.trigger,
+        timer: this.form.timer,
+        settings: this.form.settings
+      }
+      addTask(formData).then(response => {
+        if (response.code === 200) {
           this.spiderTaskForm = false
           this.getTaskInfoList()
         }
@@ -500,7 +616,7 @@ export default {
         month: '*',
         day: '*',
         week: '*',
-        day_of_week: ['*'],
+        day_of_week: '*',
         hour: '*',
         minute: '0',
         second: '0',
@@ -522,36 +638,32 @@ export default {
         DOWNLOAD_DELAY: '',
         additional: ''
       }
-      projectList().then(response => {
-        this.project_list = response.data
-      })
     },
     getTaskInfoList() {
+      this.tableLoading = true
       taskList().then(response => {
         this.taskInfoList = response.data
-        this.projectOption = new Set(this.taskInfoList.map(item => { return item.project }))
+        this.tableLoading = false
       })
     },
-    loadProjects(vaule) {
-      this.form.server = vaule.split(':')[0]
-      this.form.port = vaule.split(':')[1]
-      this.filterProject = this.project_list.filter(data => data.server === this.form.server && data.port === this.form.port)
-      this.projects = new Set(this.filterProject.map(item => { return item.name }))
+    loadServer() {
+      serverList().then(response => {
+        this.SCRAPYD_SERVERS = response.data
+      })
     },
-    loadVersions() {
-      console.log(this.form.project)
-      console.log(this.form.server)
-      console.log(this.form.port)
-      this.filterVersion = this.project_list.filter(data => data.name === this.form.project && data.server === this.form.server && data.port === this.form.port)
-      this.versions = new Set(this.filterVersion.map(item => { return item.version }))
+    loadProjects() {
+      projectList({ spider_id: this.form.server.id }).then(response => {
+        this.projects = response.data.projects
+      })
+    },
+    loadVersions(value) {
+      this.versions = value.versions
     },
     loadSpiders() {
-      this.loadSpiderListForm.host = this.form.server
-      this.loadSpiderListForm.port = this.form.port
-      this.loadSpiderListForm.project = this.form.project
-      this.loadSpiderListForm.version = this.form.version
-      projectSpiderList(this.loadSpiderListForm).then(response => {
-        this.spiders = response.data
+      this.loadSpiderListForm.project = this.form.project.id
+      this.loadSpiderListForm.version = this.form.version.code
+      spiderList(this.loadSpiderListForm).then(response => {
+        this.spiders = response.data.spiders
       })
     },
     handleStatusClick(status, taskId) {
@@ -580,113 +692,154 @@ export default {
 </script>
 
 <style>
-  .demo-table-expand {font-size: 0;}
-  .demo-table-expand label {
-    color: #99a9bf;
-    width: 150px;
-  }
-  .demo-table-expand .el-form-item {
-    margin-bottom: 0;
-    margin-right: 0;
-    width: 33%;
-  }
-  .demo-table-expand .el-form-item label{text-align: right;}
-  .demo-table-expand .el-form-item .el-form-item__content{
-    margin-left: 30px;
-    text-align: left;
-    width: 200px;
-  }
+.demo-table-expand {
+  font-size: 0;
+}
 
-  #help {margin-top: 8px;}
-  #help li {margin-bottom: 8px;}
-  #message {
-    display: none;
-    margin-left: 10px;
-    margin-top: 8px;
-    padding-top: 8px;
-    width: 700px;
-  }
-  #cmd {
-    background-color: #e3e3e3;
-    cursor: not-allowed;
-    opacity: 1;
-  }
-  #help li span{
-    background: #fff;
-    border: solid 1px #e1e4e5;
-    color: #E74C3C;
-    font-size: 90%;
-    max-width: 100%;
-    padding: 2px 5px;
-    white-space: nowrap;
-  }
-  .el-select {width: 300px}
-  .el-switch__core {
-    background: #e3e3e3;
-    border: 1px solid #e3e3e3;
-  }
+.demo-table-expand label {
+  color: #99a9bf;
+  width: 150px;
+}
 
-  #settings_arguments .el-form-item__label {color: #409EFF;}
-  #time_task .el-form-item__label {color: #feb324;}
-  #time_task .main_settings .el-form-item__label {color: #67c23a;}
+.demo-table-expand .el-form-item {
+  margin-bottom: 0;
+  margin-right: 0;
+  width: 33%;
+}
 
-  #multinodes .link {margin-left: 200px;}
-  #multinodes .key {width: 188px;}
-  .state,
-  .button {
-      border-radius: 3px;
-      padding: 3px 10px;
-      opacity: 1;
-      color: #fff;
-      transition: all 0.1s ease-out;
-  }
+.demo-table-expand .el-form-item label {
+  text-align: right;
+}
 
-  .state:hover,
-  .button:hover {
-      opacity: 0.7;
-      color: #fff;
-  }
+.demo-table-expand .el-form-item .el-form-item__content {
+  margin-left: 30px;
+  text-align: left;
+  width: 200px;
+}
 
-  .button {
-      font-size: 20px;
-      font-weight: 400;
-      margin-right: 8px;
-      padding: 5px 20px;
-  }
+.demo-table-expand .task-sttings .el-form-item__content {
+  margin-left: 30px;
+  text-align: left;
+  width: 80%;
+}
 
-  .button.big {
-      padding-top: 12px;
-      padding-bottom: 12px;
-  }
+#help {
+  margin-top: 8px;
+}
 
-  .button.narrow {
-      padding-left: 10px;
-      padding-right: 10px;
-  }
+#help li {
+  margin-bottom: 8px;
+}
 
-  .state.normal, .button.normal{
-      background: #ff6633;
-  }
+#message {
+  display: none;
+  margin-left: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  width: 700px;
+}
 
-  .state.safe, .button.safe {
-      background: #67c23a;
-  }
+#cmd {
+  background-color: #e3e3e3;
+  cursor: not-allowed;
+  opacity: 1;
+}
 
-  .state.delete, .button.delete {
-      background: #909399;
-  }
+#help li span {
+  background: #fff;
+  border: solid 1px #e1e4e5;
+  color: #E74C3C;
+  font-size: 90%;
+  max-width: 100%;
+  padding: 2px 5px;
+  white-space: nowrap;
+}
 
-  .state.warning, .button.warning {
-      background: #feb324;
-  }
+.el-select {
+  width: 300px
+}
 
-  .state.danger, .button.danger {
-      background: #fd6b6e;
-  }
+.el-switch__core {
+  background: #e3e3e3;
+  border: 1px solid #e3e3e3;
+}
 
-  .state.multinode, .button.multinode {
-      background: #7E57C2;
-  }
+#settings_arguments .el-form-item__label {
+  color: #409EFF;
+}
+
+#time_task .el-form-item__label {
+  color: #feb324;
+}
+
+#time_task .main_settings .el-form-item__label {
+  color: #67c23a;
+}
+
+#multinodes .link {
+  margin-left: 200px;
+}
+
+#multinodes .key {
+  width: 188px;
+}
+
+.state,
+.button {
+  border-radius: 3px;
+  padding: 3px 10px;
+  opacity: 1;
+  color: #fff;
+  transition: all 0.1s ease-out;
+}
+
+.state:hover,
+.button:hover {
+  opacity: 0.7;
+  color: #fff;
+}
+
+.button {
+  font-size: 20px;
+  font-weight: 400;
+  margin-right: 8px;
+  padding: 5px 20px;
+}
+
+.button.big {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.button.narrow {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.state.normal, .button.normal {
+  background: #ff6633;
+}
+
+.state.safe, .button.safe {
+  background: #67c23a;
+}
+
+.state.delete, .button.delete {
+  background: #909399;
+}
+
+.state.warning, .button.warning {
+  background: #feb324;
+}
+
+.state.danger, .button.danger {
+  background: #fd6b6e;
+}
+
+.state.multinode, .button.multinode {
+  background: #7E57C2;
+}
+
 .el-dialog {
   position: absolute;
   top: 50%;
